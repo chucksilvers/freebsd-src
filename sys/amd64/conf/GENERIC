@@ -57,7 +57,7 @@ options 	PSEUDOFS		# Pseudo-filesystem framework
 options 	TMPFS			# Efficient memory filesystem
 options 	GEOM_RAID		# Soft RAID functionality.
 options 	GEOM_LABEL		# Provides labelization
-options 	EFIRT			# EFI Runtime Services support
+#options 	EFIRT			# EFI Runtime Services support
 options 	COMPAT_FREEBSD32	# Compatible with i386 binaries
 options 	COMPAT_FREEBSD4		# Compatible with FreeBSD4
 options 	COMPAT_FREEBSD5		# Compatible with FreeBSD5
@@ -384,3 +384,12 @@ options 	IICHID_SAMPLING		# Workaround missing GPIO INTR support
 # EFI devices
 device		efidev			# EFI pseudo-device
 device		efirtc			# EFI RTC
+
+
+
+options DIAGNOSTIC
+options INVARIANTS
+options WITNESS
+
+options UART_NS8250_EARLY_PORT=0x3f8
+options EARLY_PRINTF=ns8250

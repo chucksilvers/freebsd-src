@@ -55,10 +55,16 @@
 #include <vm/vm_page.h>
 #include <vm/vm_pager.h>
 
+vm_paddr_t pmap_ptpage_pa(ptpage_t ptp);
+void *pmap_ptpage_va(ptpage_t ptp);
+void *pmap_ptpage_pa_to_va(vm_paddr_t);
+ptpage_t pmap_pa_to_ptpage(vm_paddr_t pa);
+ptpage_t pmap_va_to_ptpage(void *p);
+
 static pml5_entry_t *efi_pml5;
 static pml4_entry_t *efi_pml4;
 static vm_object_t obj_1t1_pt;
-static vm_page_t efi_pmltop_page;
+static ptpage_t efi_pmltop_page;
 static vm_pindex_t efi_1t1_idx;
 
 void
@@ -66,6 +72,7 @@ efi_destroy_1t1_map(void)
 {
 	vm_page_t m;
 
+	/* CHUQ hack this at some point. */
 	if (obj_1t1_pt != NULL) {
 		VM_OBJECT_RLOCK(obj_1t1_pt);
 		TAILQ_FOREACH(m, &obj_1t1_pt->memq, listq)
@@ -94,11 +101,12 @@ efi_phys_to_kva(vm_paddr_t paddr)
 	return (PHYS_TO_DMAP(paddr));
 }
 
-static vm_page_t
+static ptpage_t
 efi_1t1_page(void)
 {
 
-	return (vm_page_grab(obj_1t1_pt, efi_1t1_idx++, VM_ALLOC_NOBUSY |
+	/* CHUQ hack this for now */
+	return ((ptpage_t)vm_page_grab(obj_1t1_pt, efi_1t1_idx++, VM_ALLOC_NOBUSY |
 	    VM_ALLOC_WIRED | VM_ALLOC_ZERO));
 }
 
@@ -110,7 +118,7 @@ efi_1t1_pte(vm_offset_t va)
 	pdp_entry_t *pdpe;
 	pd_entry_t *pde;
 	pt_entry_t *pte;
-	vm_page_t m;
+	ptpage_t m;
 	vm_pindex_t pml5_idx, pml4_idx, pdp_idx, pd_idx;
 	vm_paddr_t mphys;
 
@@ -120,12 +128,12 @@ efi_1t1_pte(vm_offset_t va)
 		pml5e = &efi_pml5[pml5_idx];
 		if (*pml5e == 0) {
 			m = efi_1t1_page();
-			mphys = VM_PAGE_TO_PHYS(m);
+			mphys = pmap_ptpage_pa(m);
 			*pml5e = mphys | X86_PG_RW | X86_PG_V;
 		} else {
 			mphys = *pml5e & PG_FRAME;
 		}
-		pml4e = (pml4_entry_t *)PHYS_TO_DMAP(mphys);
+		pml4e = pmap_ptpage_pa_to_va(mphys);
 		pml4e = &pml4e[pml4_idx];
 	} else {
 		pml4e = &efi_pml4[pml4_idx];
@@ -133,35 +141,35 @@ efi_1t1_pte(vm_offset_t va)
 
 	if (*pml4e == 0) {
 		m = efi_1t1_page();
-		mphys =  VM_PAGE_TO_PHYS(m);
+		mphys =  pmap_ptpage_pa(m);
 		*pml4e = mphys | X86_PG_RW | X86_PG_V;
 	} else {
 		mphys = *pml4e & PG_FRAME;
 	}
 
-	pdpe = (pdp_entry_t *)PHYS_TO_DMAP(mphys);
+	pdpe = pmap_ptpage_pa_to_va(mphys);
 	pdp_idx = pmap_pdpe_index(va);
 	pdpe += pdp_idx;
 	if (*pdpe == 0) {
 		m = efi_1t1_page();
-		mphys =  VM_PAGE_TO_PHYS(m);
+		mphys =  pmap_ptpage_pa(m);
 		*pdpe = mphys | X86_PG_RW | X86_PG_V;
 	} else {
 		mphys = *pdpe & PG_FRAME;
 	}
 
-	pde = (pd_entry_t *)PHYS_TO_DMAP(mphys);
+	pde = pmap_ptpage_pa_to_va(mphys);
 	pd_idx = pmap_pde_index(va);
 	pde += pd_idx;
 	if (*pde == 0) {
 		m = efi_1t1_page();
-		mphys = VM_PAGE_TO_PHYS(m);
+		mphys = pmap_ptpage_pa(m);
 		*pde = mphys | X86_PG_RW | X86_PG_V;
 	} else {
 		mphys = *pde & PG_FRAME;
 	}
 
-	pte = (pt_entry_t *)PHYS_TO_DMAP(mphys);
+	pte = pmap_ptpage_pa_to_va(mphys);
 	pte += pmap_pte_index(va);
 	KASSERT(*pte == 0, ("va %#jx *pt %#jx", va, *pte));
 
@@ -174,7 +182,7 @@ efi_create_1t1_map(struct efi_md *map, int ndesc, int descsz)
 	struct efi_md *p;
 	pt_entry_t *pte;
 	void *pml;
-	vm_page_t m;
+	ptpage_t m;
 	vm_offset_t va;
 	uint64_t idx;
 	int bits, i, mode;
@@ -186,7 +194,7 @@ efi_create_1t1_map(struct efi_md *map, int ndesc, int descsz)
 	VM_OBJECT_WLOCK(obj_1t1_pt);
 	efi_pmltop_page = efi_1t1_page();
 	VM_OBJECT_WUNLOCK(obj_1t1_pt);
-	pml = (void *)PHYS_TO_DMAP(VM_PAGE_TO_PHYS(efi_pmltop_page));
+	pml = pmap_ptpage_va(efi_pmltop_page);
 	if (la57) {
 		efi_pml5 = pml;
 		pmap_pinit_pml5(efi_pmltop_page);
@@ -304,7 +312,7 @@ efi_arch_enter(void)
 	if (pmap_pcid_enabled && !invpcid_works)
 		PCPU_SET(curpmap, NULL);
 
-	cr3 = VM_PAGE_TO_PHYS(efi_pmltop_page);
+	cr3 = pmap_ptpage_pa(efi_pmltop_page);
 	if (pmap_pcid_enabled)
 		cr3 |= pmap_get_pcid(curpmap);
 	load_cr3(cr3);

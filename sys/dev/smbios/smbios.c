@@ -49,6 +49,9 @@
 #endif
 #include <dev/smbios/smbios.h>
 
+/* CHUQ avoid the need for efirt for now */
+#undef ARCH_MAY_USE_EFI
+
 /*
  * System Management BIOS Reference Specification, v2.4 Final
  * http://www.dmtf.org/standards/published_documents/DSP0134.pdf
