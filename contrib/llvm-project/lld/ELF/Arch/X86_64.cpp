@@ -89,6 +89,7 @@ X86_64::X86_64() {
   // Align to the large page size (known as a superpage or huge page).
   // FreeBSD automatically promotes large, superpage-aligned allocations.
   defaultImageBase = 0x200000;
+  defaultMaxPageSize = 0x200000;
 }
 
 int X86_64::getTlsGdRelaxSkip(RelType type) const {
