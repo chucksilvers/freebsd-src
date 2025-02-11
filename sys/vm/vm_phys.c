@@ -476,10 +476,17 @@ vm_phys_add_seg(vm_paddr_t start, vm_paddr_t end)
 {
 	vm_paddr_t paddr;
 
+	start = round_page(start);
+	end = trunc_page(end);
+	if (end <= start) {
+		printf("skipping seg start 0x%lx end 0x%lx\n", start, end);
+		return;
+	}
+
 	KASSERT((start & PAGE_MASK) == 0,
-	    ("vm_phys_define_seg: start is not page aligned"));
+	    ("vm_phys_add_seg: start %p is not page aligned", (void *)start));
 	KASSERT((end & PAGE_MASK) == 0,
-	    ("vm_phys_define_seg: end is not page aligned"));
+	    ("vm_phys_add_seg: end %p is not page aligned", (void *)end));
 
 	/*
 	 * Split the physical memory segment if it spans two or more free
